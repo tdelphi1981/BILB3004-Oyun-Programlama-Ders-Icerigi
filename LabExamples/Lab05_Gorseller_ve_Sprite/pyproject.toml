@@ -1,0 +1,8 @@
+[project]
+name = "lab05-gorseller-ve-sprite"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "pygame-ce>=2.5.7",
+]
