@@ -1,423 +1,554 @@
 """
-Uzay Savaşçısı - Adım 6: Tam Oyun
+Tugla Kirma (Breakout) - Adim 7: Polished Tam Versiyon
 
-Game Over ekranı, yeniden başlatma, zorluk artışı ve
-en yüksek skor takibi ile tam bir oyun deneyimi sunar.
-Zaman geçtikçe düşmanlar daha sık ve hızlı gelir.
+Coklu seviye, parcacik efektleri, zorluk artisi, en yuksek skor
+takibi ve duraklatma ozellikleri ile tamamlanmis Breakout oyunu.
 
-Öğrenilecek kavramlar:
-- Oyun durumu yönetimi (aktif / bitti)
-- Yarı saydam overlay Surface oluşturma
-- oyunu_sifirla() ile temiz yeniden başlatma
-- Zamanla artan zorluk (dinamik spawn aralığı)
-- En yüksek skor takibi (oturum içi)
+Ogrenilecek kavramlar:
+- Seviye sistemi ve dinamik zorluk artisi
+- Parcacik efektleri (Parcacik sinifi)
+- Fade-in gecis animasyonu
+- Oyun durumu yonetimi (duraklatma, seviye gecisi)
+- En yuksek skor takibi (oturum bazli)
 
-Bölüm: 05 - Görseller ve Sprite Temelleri
-Lab: 05 - Bonus: Uzay Savaşçısı (Adım 6/7)
+Bolum: 06 - Carpisma Algilama ve Fizik Temelleri
+Lab: 06 - Bonus: Tugla Kirma (Adim 7/7)
 
-Çalıştırma: uv run python adim6_tam_oyun.py
+Calistirma: uv run python adim7_tam_oyun.py
 Gereksinimler: pygame
-
-Kontroller:
-- WASD / Ok tuşları: Hareket
-- SPACE: Ateş
-- R: Yeniden başla (Game Over sonrası)
-- ESC: Çıkış
 """
 
 import pygame
-import random
-import os
 import sys
+import math
+import random
 
 # --- Sabitler ---
 GENISLIK = 800
 YUKSEKLIK = 600
 FPS = 60
-BASLIK = "Uzay Savaşçısı - Adım 6"
+TOP_HIZ = 5
+RAKET_HIZ = 7
+GUCLENDIRME_HIZ = 2
+GUCLENDIRME_SANS = 0.20
+MAKS_SATIR = 6
 
-# Renkler
+# --- Renkler ---
 SIYAH = (0, 0, 0)
 BEYAZ = (255, 255, 255)
-KOYU_MAVI = (8, 8, 32)
-ACIK_MAVI = (100, 180, 255)
-SARI = (255, 220, 50)
-GRI = (150, 150, 160)
-KOYU_GRI = (80, 80, 90)
+KOYU_MAVI = (0, 0, 139)
+ACIK_MAVI = (100, 149, 237)
 KIRMIZI = (220, 50, 50)
-KOYU_KIRMIZI = (150, 30, 30)
-YESIL = (50, 220, 50)
+YESIL = (50, 200, 50)
+SARI = (240, 220, 50)
+TURUNCU = (240, 150, 30)
+MOR = (160, 50, 200)
+GRI = (120, 120, 120)
 
-# Oyuncu ayarları
-OYUNCU_HIZ = 5
-OYUNCU_BOYUT = (50, 40)
-OYUNCU_CAN = 3
+TUGLA_RENKLERI = [KIRMIZI, TURUNCU, SARI, YESIL, MOR, ACIK_MAVI]
 
-# Mermi ayarları
-MERMI_HIZ = 8
-MERMI_BOYUT = (9, 37)
-MERMI_BEKLEME = 250
+# --- Tugla sabitleri ---
+TUGLA_GENISLIK = 70
+TUGLA_YUKSEKLIK = 25
+TUGLA_BASLANGIC_X = 90
+TUGLA_BASLANGIC_Y = 60
+TUGLA_SATIR_YUKSEKLIK = 35
+TUGLA_SUTUN_SAYISI = 5
+TUGLA_SUTUN_BOSLUK = 5
 
-# Düşman ayarları
-DUSMAN_SPAWN_BASLANGIC = 1000  # ms (başlangıç aralığı)
-DUSMAN_SPAWN_MIN = 300         # ms (minimum aralık)
-DUSMAN_PUAN = 100
-DUSMAN_TIPLERI = [
-    {"dosya": "PNG/Enemies/enemyRed1.png", "boyut": (40, 30), "hiz": (2, 4)},
-    {"dosya": "PNG/Enemies/enemyRed2.png", "boyut": (50, 35), "hiz": (1, 3)},
-    {"dosya": "PNG/Enemies/enemyRed3.png", "boyut": (60, 40), "hiz": (1, 2)},
+# --- Guclendirme tipleri ---
+GUCLENDIRME_TIPLERI = [
+    {"tip": "genis", "renk": YESIL, "etiket": "G"},
+    {"tip": "ekstra_can", "renk": ACIK_MAVI, "etiket": "+"},
+    {"tip": "hizli_top", "renk": KIRMIZI, "etiket": "H"},
 ]
 
-# Asset dizini
-ASSET_DIZIN = os.path.join(
-    os.path.dirname(__file__), "..", "assets", "kenney_space-shooter-redux"
-)
+
+class Parcacik(pygame.sprite.Sprite):
+    """Tugla kirildikca ucan kucuk parcacik efekti."""
+
+    def __init__(self, x, y, renk):
+        super().__init__()
+        self.boyut = random.randint(3, 6)
+        self.image = pygame.Surface((self.boyut, self.boyut), pygame.SRCALPHA)
+        self.image.fill(renk)
+        self.rect = self.image.get_rect(center=(x, y))
+
+        # Rastgele yon ve hiz
+        aci = random.uniform(0, 2 * math.pi)
+        hiz = random.uniform(2, 6)
+        self.hiz_x = math.cos(aci) * hiz
+        self.hiz_y = math.sin(aci) * hiz
+        self.omur = random.uniform(0.3, 0.8)  # Saniye cinsinden
+        self.gecen_zaman = 0
+        self.alfa = 255
+
+    def update(self, dt):
+        """Parcacik hareketi ve solma."""
+        self.gecen_zaman += dt
+        if self.gecen_zaman >= self.omur:
+            self.kill()
+            return
+
+        self.rect.x += self.hiz_x
+        self.rect.y += self.hiz_y
+        self.hiz_y += 5 * dt  # Hafif yercekimi
+
+        # Solma efekti
+        oran = 1.0 - (self.gecen_zaman / self.omur)
+        self.alfa = max(0, int(255 * oran))
+        self.image.set_alpha(self.alfa)
 
 
-def gorsel_yukle(dosya_adi, boyut=None):
-    """Görsel dosyasını yükle, bulunamazsa None döndür."""
-    try:
-        yol = os.path.join(ASSET_DIZIN, dosya_adi)
-        gorsel = pygame.image.load(yol).convert_alpha()
-        if boyut:
-            gorsel = pygame.transform.smoothscale(gorsel, boyut)
-        gorsel.set_colorkey(SIYAH)
-        return gorsel
-    except (pygame.error, FileNotFoundError):
-        return None
-
-
-def arkaplan_olustur():
-    """Döşemeli arka plan Surface'i oluştur."""
-    arkaplan = pygame.Surface((GENISLIK, YUKSEKLIK * 2))
-    gorsel = gorsel_yukle("Backgrounds/darkPurple.png")
-
-    if gorsel:
-        g_gen = gorsel.get_width()
-        g_yuk = gorsel.get_height()
-        for x in range(0, GENISLIK, g_gen):
-            for y in range(0, YUKSEKLIK * 2, g_yuk):
-                arkaplan.blit(gorsel, (x, y))
-    else:
-        arkaplan.fill(KOYU_MAVI)
-        for _ in range(200):
-            x = random.randint(0, GENISLIK - 1)
-            y = random.randint(0, YUKSEKLIK * 2 - 1)
-            boyut = random.randint(1, 3)
-            if boyut == 3:
-                renk = BEYAZ
-            elif boyut == 2:
-                renk = GRI
-            else:
-                renk = KOYU_GRI
-            pygame.draw.circle(arkaplan, renk, (x, y), boyut)
-
-    return arkaplan
-
-
-# --- Sprite Sınıfları ---
-
-class Oyuncu(pygame.sprite.Sprite):
-    """Oyuncu uzay gemisi."""
+class Raket(pygame.sprite.Sprite):
+    """Oyuncunun kontrol ettigi raket."""
 
     def __init__(self):
         super().__init__()
-        gorsel = gorsel_yukle("PNG/playerShip1_blue.png", OYUNCU_BOYUT)
-        if gorsel:
-            self.image = gorsel
-        else:
-            self.image = pygame.Surface(OYUNCU_BOYUT, pygame.SRCALPHA)
-            orta_x = OYUNCU_BOYUT[0] // 2
-            govde = [
-                (orta_x, 2),
-                (OYUNCU_BOYUT[0] - 4, OYUNCU_BOYUT[1] - 2),
-                (4, OYUNCU_BOYUT[1] - 2),
-            ]
-            pygame.draw.polygon(self.image, ACIK_MAVI, govde)
-            pygame.draw.polygon(self.image, BEYAZ, govde, 2)
-            pygame.draw.circle(self.image, SARI,
-                              (orta_x, OYUNCU_BOYUT[1] // 2), 4)
-
-        self.rect = self.image.get_rect()
+        self.normal_genislik = 120
+        self.genislik = self.normal_genislik
+        self.yukseklik = 15
+        self._gorsel_olustur()
         self.rect.centerx = GENISLIK // 2
-        self.rect.bottom = YUKSEKLIK - 20
-        self.hiz = OYUNCU_HIZ
-        self.sinir = pygame.Rect(0, 0, GENISLIK, YUKSEKLIK)
-        self.son_ates = 0
-        self.can = OYUNCU_CAN
+        self.rect.y = YUKSEKLIK - 30
+
+    def _gorsel_olustur(self):
+        """Raket gorselini olusturur."""
+        eski_center = getattr(self, 'rect', None)
+        eski_centerx = eski_center.centerx if eski_center else GENISLIK // 2
+        self.image = pygame.Surface((self.genislik, self.yukseklik), pygame.SRCALPHA)
+        pygame.draw.rect(
+            self.image, ACIK_MAVI,
+            (0, 0, self.genislik, self.yukseklik),
+            border_radius=7
+        )
+        self.rect = self.image.get_rect()
+        self.rect.centerx = eski_centerx
+        self.rect.y = YUKSEKLIK - 30
+
+    def genislet(self):
+        """Raketi 2 katina genisletir."""
+        self.genislik = self.normal_genislik * 2
+        self._gorsel_olustur()
+
+    def normal_boyut(self):
+        """Raketi normal boyutuna dondurur."""
+        self.genislik = self.normal_genislik
+        self._gorsel_olustur()
 
     def update(self):
-        """Klavye girdilerine göre hareket et."""
+        """Klavye ile raket hareketi."""
         tuslar = pygame.key.get_pressed()
-
-        if tuslar[pygame.K_LEFT] or tuslar[pygame.K_a]:
-            self.rect.x -= self.hiz
-        if tuslar[pygame.K_RIGHT] or tuslar[pygame.K_d]:
-            self.rect.x += self.hiz
-        if tuslar[pygame.K_UP] or tuslar[pygame.K_w]:
-            self.rect.y -= self.hiz
-        if tuslar[pygame.K_DOWN] or tuslar[pygame.K_s]:
-            self.rect.y += self.hiz
-
-        self.rect.clamp_ip(self.sinir)
-
-    def ates_et(self, mermi_grubu, tum_grup):
-        """Cooldown süresi dolduysa mermi oluştur."""
-        simdi = pygame.time.get_ticks()
-        if simdi - self.son_ates >= MERMI_BEKLEME:
-            mermi = Mermi(self.rect.centerx, self.rect.top)
-            mermi_grubu.add(mermi)
-            tum_grup.add(mermi)
-            self.son_ates = simdi
+        if tuslar[pygame.K_LEFT]:
+            self.rect.x -= RAKET_HIZ
+        if tuslar[pygame.K_RIGHT]:
+            self.rect.x += RAKET_HIZ
+        self.rect.clamp_ip(pygame.Rect(0, 0, GENISLIK, YUKSEKLIK))
 
 
-class Mermi(pygame.sprite.Sprite):
-    """Oyuncu mermisi."""
+class Top(pygame.sprite.Sprite):
+    """Oyun topu."""
+
+    def __init__(self):
+        super().__init__()
+        self.yaricap = 8
+        boyut = self.yaricap * 2
+        self.image = pygame.Surface((boyut, boyut), pygame.SRCALPHA)
+        pygame.draw.circle(self.image, BEYAZ, (self.yaricap, self.yaricap), self.yaricap)
+        self.rect = self.image.get_rect()
+        self.hiz_x = 3.0
+        self.hiz_y = -4.0
+        self.aktif = False
+        self.hiz_carpani = 1.0
+        self.temel_hiz = TOP_HIZ
+
+    def update(self, raket):
+        """Top hareketi."""
+        if not self.aktif:
+            self.rect.centerx = raket.rect.centerx
+            self.rect.bottom = raket.rect.top
+            return
+
+        self.rect.x += self.hiz_x * self.hiz_carpani
+        self.rect.y += self.hiz_y * self.hiz_carpani
+
+        if self.rect.left <= 0:
+            self.rect.left = 0
+            self.hiz_x = abs(self.hiz_x)
+        elif self.rect.right >= GENISLIK:
+            self.rect.right = GENISLIK
+            self.hiz_x = -abs(self.hiz_x)
+
+        if self.rect.top <= 0:
+            self.rect.top = 0
+            self.hiz_y = abs(self.hiz_y)
+
+    def raket_sekmesi(self, raket):
+        """Raket ile carpisma ve aci hesabi."""
+        if not self.aktif:
+            return
+        if self.rect.colliderect(raket.rect) and self.hiz_y > 0:
+            vurun_x = self.rect.centerx - raket.rect.left
+            oran = vurun_x / raket.rect.width
+            aci = (oran - 0.5) * 120
+
+            self.hiz_x = math.sin(math.radians(aci)) * self.temel_hiz
+            self.hiz_y = -abs(math.cos(math.radians(aci)) * self.temel_hiz)
+            self.rect.bottom = raket.rect.top
+
+    def firlat(self):
+        """Topu firlatir."""
+        if not self.aktif:
+            self.aktif = True
+            self.hiz_x = 3.0
+            self.hiz_y = -4.0
+
+    def sifirla(self, raket):
+        """Topu raketin ustune sifirlar."""
+        self.aktif = False
+        self.hiz_carpani = 1.0
+        self.rect.centerx = raket.rect.centerx
+        self.rect.bottom = raket.rect.top
+
+
+class Tugla(pygame.sprite.Sprite):
+    """Kirilan tugla nesnesi."""
+
+    def __init__(self, x, y, renk):
+        super().__init__()
+        self.renk = renk
+        self.image = pygame.Surface((TUGLA_GENISLIK, TUGLA_YUKSEKLIK))
+        self.image.fill(renk)
+        pygame.draw.rect(
+            self.image, BEYAZ,
+            (0, 0, TUGLA_GENISLIK, TUGLA_YUKSEKLIK), 1
+        )
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+
+
+class Guclendirme(pygame.sprite.Sprite):
+    """Tuglalardan dusen guclendirme nesnesi."""
 
     def __init__(self, x, y):
         super().__init__()
-        gorsel = gorsel_yukle("PNG/Lasers/laserBlue01.png", MERMI_BOYUT)
-        if gorsel:
-            self.image = gorsel
-        else:
-            self.image = pygame.Surface(MERMI_BOYUT, pygame.SRCALPHA)
-            pygame.draw.rect(self.image, SARI, (2, 0, 5, 37))
-            pygame.draw.rect(self.image, BEYAZ, (3, 0, 3, 10))
+        bilgi = random.choice(GUCLENDIRME_TIPLERI)
+        self.tip = bilgi["tip"]
+        renk = bilgi["renk"]
+        etiket = bilgi["etiket"]
+
+        self.image = pygame.Surface((20, 20), pygame.SRCALPHA)
+        pygame.draw.rect(self.image, renk, (0, 0, 20, 20), border_radius=4)
+        kucuk_font = pygame.font.SysFont("Arial", 14, bold=True)
+        harf = kucuk_font.render(etiket, True, BEYAZ)
+        harf_rect = harf.get_rect(center=(10, 10))
+        self.image.blit(harf, harf_rect)
 
         self.rect = self.image.get_rect()
         self.rect.centerx = x
-        self.rect.bottom = y
-        self.hiz = MERMI_HIZ
+        self.rect.centery = y
 
     def update(self):
-        """Mermiyi yukarı hareket ettir."""
-        self.rect.y -= self.hiz
-        if self.rect.bottom < 0:
-            self.kill()
-
-
-class Dusman(pygame.sprite.Sprite):
-    """Düşman uzay gemisi."""
-
-    def __init__(self, hiz_carpani=1.0):
-        """Düşman oluştur.
-
-        Args:
-            hiz_carpani: Hızı artırmak için çarpan (zorluk için).
-        """
-        super().__init__()
-        tip = random.choice(DUSMAN_TIPLERI)
-
-        gorsel = gorsel_yukle(tip["dosya"], tip["boyut"])
-        if gorsel:
-            self.image = gorsel
-        else:
-            self.image = pygame.Surface(tip["boyut"], pygame.SRCALPHA)
-            pygame.draw.rect(
-                self.image, KIRMIZI,
-                (0, 0, tip["boyut"][0], tip["boyut"][1]),
-                border_radius=4
-            )
-            pygame.draw.rect(
-                self.image, KOYU_KIRMIZI,
-                (3, 3, tip["boyut"][0] - 6, tip["boyut"][1] - 6),
-                border_radius=3
-            )
-
-        self.rect = self.image.get_rect()
-        self.rect.x = random.randint(0, GENISLIK - self.rect.width)
-        self.rect.bottom = 0
-
-        min_hiz, max_hiz = tip["hiz"]
-        self.hiz = random.uniform(min_hiz, max_hiz) * hiz_carpani
-
-    def update(self):
-        """Düşmanı aşağı hareket ettir."""
-        self.rect.y += self.hiz
+        """Guclendirme asagi duser."""
+        self.rect.y += GUCLENDIRME_HIZ
         if self.rect.top > YUKSEKLIK:
             self.kill()
 
 
-def oyunu_sifirla():
-    """Oyun durumunu başlangıç değerlerine döndür.
-
-    Returns:
-        Yeni sprite grupları ve oyuncu içeren demet.
-    """
-    tum_spritelar = pygame.sprite.Group()
-    mermiler = pygame.sprite.Group()
-    dusmanlar = pygame.sprite.Group()
-
-    oyuncu = Oyuncu()
-    tum_spritelar.add(oyuncu)
-
-    skor = 0
-    oyun_bitti = False
-    baslangic_zamani = pygame.time.get_ticks()
-    son_dusman_zamani = pygame.time.get_ticks()
-
-    return (tum_spritelar, mermiler, dusmanlar, oyuncu,
-            skor, oyun_bitti, baslangic_zamani, son_dusman_zamani)
+def tugla_olustur(satir_sayisi=4):
+    """Belirtilen satir sayisinda tugla izgara duzeni olusturur."""
+    tuglalar = pygame.sprite.Group()
+    for satir in range(satir_sayisi):
+        renk = TUGLA_RENKLERI[satir % len(TUGLA_RENKLERI)]
+        for sutun in range(TUGLA_SUTUN_SAYISI):
+            x = TUGLA_BASLANGIC_X + sutun * (TUGLA_GENISLIK + TUGLA_SUTUN_BOSLUK)
+            y = TUGLA_BASLANGIC_Y + satir * TUGLA_SATIR_YUKSEKLIK
+            tugla = Tugla(x, y, renk)
+            tuglalar.add(tugla)
+    return tuglalar
 
 
-def hud_ciz(ekran, font, skor, can, en_yuksek):
-    """Skor, can ve en yüksek skor bilgisini çiz."""
-    # Skor (sol üst)
-    skor_yazi = font.render(f"Skor: {skor}", True, SARI)
-    ekran.blit(skor_yazi, (15, 15))
-
-    # En yüksek skor (sol üst, ikinci satır)
-    ey_yazi = font.render(f"En Yüksek: {en_yuksek}", True, GRI)
-    ekran.blit(ey_yazi, (15, 42))
-
-    # Can (sağ üst)
-    can_yazi = font.render(f"Can: {can}", True, YESIL)
-    can_rect = can_yazi.get_rect(right=GENISLIK - 15, top=15)
-    ekran.blit(can_yazi, can_rect)
+def parcacik_olustur(x, y, renk, parcaciklar, adet=8):
+    """Belirtilen noktada parcacik efekti olusturur."""
+    for _ in range(adet):
+        p = Parcacik(x, y, renk)
+        parcaciklar.add(p)
 
 
 def main():
-    """Ana oyun fonksiyonu."""
+    """Ana oyun dongusu."""
     pygame.init()
     ekran = pygame.display.set_mode((GENISLIK, YUKSEKLIK))
-    pygame.display.set_caption(BASLIK)
+    pygame.display.set_caption("Tugla Kirma - Tam Versiyon")
     saat = pygame.time.Clock()
-    font = pygame.font.Font(None, 28)
-    buyuk_font = pygame.font.Font(None, 64)
+    yazi_tipi = pygame.font.SysFont("Arial", 24)
+    buyuk_yazi = pygame.font.SysFont("Arial", 48, bold=True)
+    kucuk_yazi = pygame.font.SysFont("Arial", 20)
+    dev_yazi = pygame.font.SysFont("Arial", 64, bold=True)
 
-    # Arka plan
-    arkaplan = arkaplan_olustur()
-    arkaplan_y = 0
-
-    # En yüksek skor (oturum içi)
     en_yuksek_skor = 0
 
-    # Oyunu başlat
-    (tum_spritelar, mermiler, dusmanlar, oyuncu,
-     skor, oyun_bitti, baslangic_zamani, son_dusman_zamani) = oyunu_sifirla()
+    # Oyun durumlari
+    OYNUYOR = "oynuyor"
+    DURAKLATILDI = "duraklatildi"
+    OYUN_BITTI = "oyun_bitti"
+    KAZANDI = "kazandi"
+    SEVIYE_GECISI = "seviye_gecisi"
 
-    # --- Ana Oyun Döngüsü ---
+    def yeni_oyun():
+        """Oyunu tamamen sifirlar."""
+        nonlocal raket, top, tuglalar, guclendirmeler, parcaciklar
+        nonlocal skor, can, seviye, durum
+        nonlocal genis_zamanlayici, hizli_zamanlayici
+        nonlocal gecis_alfa, gecis_zamanlayici
+
+        raket = Raket()
+        top = Top()
+        seviye = 1
+        satir = min(4, MAKS_SATIR)
+        tuglalar = tugla_olustur(satir)
+        guclendirmeler = pygame.sprite.Group()
+        parcaciklar = pygame.sprite.Group()
+        skor = 0
+        can = 3
+        durum = OYNUYOR
+        genis_zamanlayici = 0
+        hizli_zamanlayici = 0
+        gecis_alfa = 0
+        gecis_zamanlayici = 0
+        top.temel_hiz = TOP_HIZ
+        top.sifirla(raket)
+
+    def sonraki_seviye():
+        """Sonraki seviyeye gecer."""
+        nonlocal seviye, tuglalar, guclendirmeler, durum
+        nonlocal gecis_alfa, gecis_zamanlayici
+        nonlocal genis_zamanlayici, hizli_zamanlayici
+
+        seviye += 1
+        satir = min(4 + (seviye - 1), MAKS_SATIR)
+        tuglalar = tugla_olustur(satir)
+        guclendirmeler = pygame.sprite.Group()
+
+        # Zorluk artisi: top biraz hizlanir her seviyede
+        top.temel_hiz = TOP_HIZ + (seviye - 1) * 0.3
+        top.sifirla(raket)
+        raket.normal_boyut()
+        genis_zamanlayici = 0
+        hizli_zamanlayici = 0
+        top.hiz_carpani = 1.0
+
+        # Seviye gecis animasyonu basla
+        durum = SEVIYE_GECISI
+        gecis_alfa = 255
+        gecis_zamanlayici = 1.5  # 1.5 saniye fade-in
+
+    # Degiskenleri baslat
+    raket = None
+    top = None
+    tuglalar = None
+    guclendirmeler = None
+    parcaciklar = None
+    skor = 0
+    can = 3
+    seviye = 1
+    durum = OYNUYOR
+    genis_zamanlayici = 0
+    hizli_zamanlayici = 0
+    gecis_alfa = 0
+    gecis_zamanlayici = 0
+    yeni_oyun()
+
+    overlay = pygame.Surface((GENISLIK, YUKSEKLIK), pygame.SRCALPHA)
+    gecis_surface = pygame.Surface((GENISLIK, YUKSEKLIK), pygame.SRCALPHA)
+
     calistir = True
     while calistir:
-        saat.tick(FPS)
+        dt = saat.tick(FPS) / 1000.0
 
-        # --- Olay işleme ---
         for olay in pygame.event.get():
             if olay.type == pygame.QUIT:
                 calistir = False
             elif olay.type == pygame.KEYDOWN:
                 if olay.key == pygame.K_ESCAPE:
                     calistir = False
+                elif olay.key == pygame.K_SPACE:
+                    if durum == OYNUYOR:
+                        top.firlat()
+                elif olay.key == pygame.K_r:
+                    yeni_oyun()
+                elif olay.key == pygame.K_p:
+                    if durum == OYNUYOR:
+                        durum = DURAKLATILDI
+                    elif durum == DURAKLATILDI:
+                        durum = OYNUYOR
 
-                if oyun_bitti:
-                    if olay.key == pygame.K_r:
-                        (tum_spritelar, mermiler, dusmanlar, oyuncu,
-                         skor, oyun_bitti, baslangic_zamani,
-                         son_dusman_zamani) = oyunu_sifirla()
-                    continue
+        # --- Guncelleme ---
+        if durum == SEVIYE_GECISI:
+            gecis_zamanlayici -= dt
+            gecis_alfa = max(0, int(255 * (gecis_zamanlayici / 1.5)))
+            if gecis_zamanlayici <= 0:
+                durum = OYNUYOR
+                gecis_alfa = 0
 
-                if olay.key == pygame.K_SPACE:
-                    oyuncu.ates_et(mermiler, tum_spritelar)
+        elif durum == OYNUYOR:
+            # Zamanlayicilar
+            if genis_zamanlayici > 0:
+                genis_zamanlayici -= dt
+                if genis_zamanlayici <= 0:
+                    genis_zamanlayici = 0
+                    raket.normal_boyut()
 
-        # --- Güncelle ---
-        if not oyun_bitti:
-            arkaplan_y += 1
-            if arkaplan_y >= YUKSEKLIK:
-                arkaplan_y = 0
+            if hizli_zamanlayici > 0:
+                hizli_zamanlayici -= dt
+                if hizli_zamanlayici <= 0:
+                    hizli_zamanlayici = 0
+                    top.hiz_carpani = 1.0
 
-            simdi = pygame.time.get_ticks()
+            raket.update()
+            top.update(raket)
+            top.raket_sekmesi(raket)
+            guclendirmeler.update()
 
-            # Zorluk hesapla: geçen süre ile spawn aralığı kısalır
-            gecen_sure = (simdi - baslangic_zamani) / 1000  # saniye
-            # Her 10 saniyede 50ms azalt, minimum DUSMAN_SPAWN_MIN
-            spawn_arasi = max(
-                DUSMAN_SPAWN_MIN,
-                DUSMAN_SPAWN_BASLANGIC - int(gecen_sure / 10) * 50
-            )
-            # Hız çarpanı: her 15 saniyede %10 artış
-            hiz_carpani = 1.0 + (gecen_sure / 15) * 0.1
+            # Parcaciklari guncelle (dt parametresi ile)
+            for p in parcaciklar:
+                p.update(dt)
 
-            # Düşman spawn
-            if simdi - son_dusman_zamani >= spawn_arasi:
-                dusman = Dusman(hiz_carpani)
-                dusmanlar.add(dusman)
-                tum_spritelar.add(dusman)
-                son_dusman_zamani = simdi
+            # Tugla carpisma
+            if top.aktif:
+                kirilan = pygame.sprite.spritecollide(top, tuglalar, True)
+                if kirilan:
+                    top.hiz_y = -top.hiz_y
+                    skor += len(kirilan) * 10
 
-            tum_spritelar.update()
+                    for tugla in kirilan:
+                        # Parcacik efekti
+                        parcacik_olustur(
+                            tugla.rect.centerx, tugla.rect.centery,
+                            tugla.renk, parcaciklar
+                        )
+                        # Guclendirme sansi
+                        if random.random() < GUCLENDIRME_SANS:
+                            guc = Guclendirme(
+                                tugla.rect.centerx, tugla.rect.centery
+                            )
+                            guclendirmeler.add(guc)
 
-            # Çarpışmalar
-            vurulanlar = pygame.sprite.groupcollide(
-                mermiler, dusmanlar, True, True
-            )
-            for mermi, dusman_listesi in vurulanlar.items():
-                skor += DUSMAN_PUAN * len(dusman_listesi)
+            # Guclendirme toplama
+            toplanan = pygame.sprite.spritecollide(raket, guclendirmeler, True)
+            for guc in toplanan:
+                if guc.tip == "genis":
+                    raket.genislet()
+                    genis_zamanlayici = 5.0
+                elif guc.tip == "ekstra_can":
+                    can += 1
+                elif guc.tip == "hizli_top":
+                    top.hiz_carpani = 1.5
+                    hizli_zamanlayici = 5.0
 
-            carpanlar = pygame.sprite.spritecollide(
-                oyuncu, dusmanlar, True
-            )
-            if carpanlar:
-                oyuncu.can -= len(carpanlar)
-                if oyuncu.can <= 0:
-                    oyuncu.can = 0
-                    oyun_bitti = True
-                    # En yüksek skoru güncelle
+            # Top duserse
+            if top.aktif and top.rect.top > YUKSEKLIK:
+                can -= 1
+                if can <= 0:
+                    durum = OYUN_BITTI
                     if skor > en_yuksek_skor:
                         en_yuksek_skor = skor
+                else:
+                    top.sifirla(raket)
 
-        # --- Çizim ---
-        ekran.blit(arkaplan, (0, arkaplan_y - YUKSEKLIK))
-        ekran.blit(arkaplan, (0, arkaplan_y))
+            # Tum tuglalar kirildiysa
+            if len(tuglalar) == 0:
+                if skor > en_yuksek_skor:
+                    en_yuksek_skor = skor
+                sonraki_seviye()
 
-        tum_spritelar.draw(ekran)
+        # --- Cizim ---
+        ekran.fill(SIYAH)
 
-        # HUD
-        hud_ciz(ekran, font, skor, oyuncu.can, en_yuksek_skor)
+        # Oyun alani
+        tuglalar.draw(ekran)
+        guclendirmeler.draw(ekran)
+        parcaciklar.draw(ekran)
+        ekran.blit(raket.image, raket.rect)
+        ekran.blit(top.image, top.rect)
 
-        # Game Over ekranı
-        if oyun_bitti:
-            # Yarı saydam siyah katman
-            katman = pygame.Surface((GENISLIK, YUKSEKLIK))
-            katman.set_alpha(150)
-            katman.fill(SIYAH)
-            ekran.blit(katman, (0, 0))
+        # Ust bilgi cubugu
+        skor_yazi = yazi_tipi.render(f"Skor: {skor}", True, BEYAZ)
+        can_yazi = yazi_tipi.render(f"Can: {can}", True, BEYAZ)
+        seviye_yazi = yazi_tipi.render(f"Seviye: {seviye}", True, BEYAZ)
+        rekor_yazi = kucuk_yazi.render(f"En Yuksek: {en_yuksek_skor}", True, GRI)
 
-            # OYUN BİTTİ yazısı
-            go_yazi = buyuk_font.render("OYUN BİTTİ", True, KIRMIZI)
-            go_rect = go_yazi.get_rect(
-                center=(GENISLIK // 2, YUKSEKLIK // 2 - 30)
+        ekran.blit(skor_yazi, (10, 10))
+        ekran.blit(seviye_yazi, (GENISLIK // 2 - seviye_yazi.get_width() // 2, 10))
+        ekran.blit(can_yazi, (GENISLIK - 80, 10))
+        ekran.blit(rekor_yazi, (GENISLIK - rekor_yazi.get_width() - 10, 35))
+
+        # Aktif guclendirme zamanlayicilari
+        bilgi_y = 40
+        if genis_zamanlayici > 0:
+            gz = kucuk_yazi.render(
+                f"[G] Genis raket: {genis_zamanlayici:.1f}s", True, YESIL
             )
+            ekran.blit(gz, (10, bilgi_y))
+            bilgi_y += 22
+        if hizli_zamanlayici > 0:
+            hz = kucuk_yazi.render(
+                f"[H] Hizli top: {hizli_zamanlayici:.1f}s", True, KIRMIZI
+            )
+            ekran.blit(hz, (10, bilgi_y))
+            bilgi_y += 22
+
+        # Bilgi mesaji - top beklerken
+        if not top.aktif and durum == OYNUYOR:
+            bilgi = kucuk_yazi.render("BOSLUK tusu ile topu firlat", True, SARI)
+            bilgi_rect = bilgi.get_rect(center=(GENISLIK // 2, YUKSEKLIK - 60))
+            ekran.blit(bilgi, bilgi_rect)
+
+        # Seviye gecis efekti (fade-in)
+        if durum == SEVIYE_GECISI:
+            gecis_surface.fill((0, 0, 0, gecis_alfa))
+            ekran.blit(gecis_surface, (0, 0))
+            seviye_mesaj = dev_yazi.render(f"Seviye {seviye}", True, BEYAZ)
+            mesaj_rect = seviye_mesaj.get_rect(center=(GENISLIK // 2, YUKSEKLIK // 2))
+            ekran.blit(seviye_mesaj, mesaj_rect)
+
+        # Duraklatma
+        if durum == DURAKLATILDI:
+            overlay.fill((0, 0, 0, 150))
+            ekran.blit(overlay, (0, 0))
+            dur_yazi = buyuk_yazi.render("DURAKLATILDI", True, SARI)
+            dur_rect = dur_yazi.get_rect(center=(GENISLIK // 2, YUKSEKLIK // 2 - 20))
+            ekran.blit(dur_yazi, dur_rect)
+
+            devam = kucuk_yazi.render("Devam etmek icin P tusuna basin", True, BEYAZ)
+            devam_rect = devam.get_rect(center=(GENISLIK // 2, YUKSEKLIK // 2 + 30))
+            ekran.blit(devam, devam_rect)
+
+        # Game Over
+        if durum == OYUN_BITTI:
+            overlay.fill((0, 0, 0, 150))
+            ekran.blit(overlay, (0, 0))
+
+            go_yazi = buyuk_yazi.render("GAME OVER", True, KIRMIZI)
+            go_rect = go_yazi.get_rect(center=(GENISLIK // 2, YUKSEKLIK // 2 - 40))
             ekran.blit(go_yazi, go_rect)
 
-            # Skor bilgisi
-            skor_bilgi = font.render(
-                f"Skor: {skor} | En Yüksek: {en_yuksek_skor}",
-                True, BEYAZ
-            )
-            skor_rect = skor_bilgi.get_rect(
-                center=(GENISLIK // 2, YUKSEKLIK // 2 + 15)
-            )
-            ekran.blit(skor_bilgi, skor_rect)
+            skor_son = yazi_tipi.render(f"Son Skor: {skor}", True, BEYAZ)
+            skor_rect = skor_son.get_rect(center=(GENISLIK // 2, YUKSEKLIK // 2 + 10))
+            ekran.blit(skor_son, skor_rect)
 
-            # Yeniden başlatma bilgisi
-            tekrar_yazi = font.render(
-                "R: Tekrar | ESC: Çıkış", True, GRI
+            rekor_son = yazi_tipi.render(
+                f"En Yuksek Skor: {en_yuksek_skor}", True, SARI
             )
-            tekrar_rect = tekrar_yazi.get_rect(
-                center=(GENISLIK // 2, YUKSEKLIK // 2 + 50)
-            )
-            ekran.blit(tekrar_yazi, tekrar_rect)
+            rekor_rect = rekor_son.get_rect(center=(GENISLIK // 2, YUKSEKLIK // 2 + 40))
+            ekran.blit(rekor_son, rekor_rect)
 
-        # Kontrol bilgisi (oyun aktifken)
-        if not oyun_bitti:
-            kontrol = font.render(
-                "WASD: Hareket | SPACE: Ateş | ESC: Çıkış",
-                True, KOYU_GRI
+            tekrar = kucuk_yazi.render(
+                "Tekrar baslatmak icin R tusuna basin", True, BEYAZ
             )
-            kontrol_rect = kontrol.get_rect(
-                centerx=GENISLIK // 2, bottom=YUKSEKLIK - 8
-            )
-            ekran.blit(kontrol, kontrol_rect)
+            tekrar_rect = tekrar.get_rect(center=(GENISLIK // 2, YUKSEKLIK // 2 + 75))
+            ekran.blit(tekrar, tekrar_rect)
 
         pygame.display.flip()
 
@@ -428,25 +559,15 @@ def main():
 if __name__ == "__main__":
     main()
 
-"""
-BEKLENEN ÇIKTI:
----------------
-800x600 piksel kayan uzay arka planlı tam bir uzay savaşı
-oyunu açılır.
 
-Oyun mekanikleri:
-- WASD/Ok tuşları ile hareket, SPACE ile ateş
-- Düşmanlar üstten gelir, mermilerle vurulabilir (+100 puan)
-- Düşmana temas edince 1 can kaybı (toplam 3 can)
-- Zaman geçtikçe düşmanlar daha sık ve hızlı gelir
-
-Can 0 olunca:
-- Yarı saydam siyah overlay belirir
-- "OYUN BİTTİ" yazısı, skor ve en yüksek skor gösterilir
-- R tuşuna basarak yeniden başla
-- En yüksek skor oturum boyunca takip edilir
-
-Sol üst: Skor ve en yüksek skor
-Sağ üst: Can bilgisi
-ESC ile program kapanır.
-"""
+# --- BEKLENEN CIKTI ---
+# [OK] Tam ozellikli Tugla Kirma oyunu
+# [OK] Tum tuglalar kirilinca sonraki seviyeye gecilir (+1 satir tugla, maks 6)
+# [OK] Seviye gecisinde fade-in animasyonu gorulur
+# [OK] Her seviyede top hizi biraz artar (zorluk artisi)
+# [OK] Tuglalar kirildikca renkli parcacik efektleri olusur
+# [OK] Guclendirmeler calismaya devam eder (genis raket, ekstra can, hizli top)
+# [OK] P tusu ile oyun duraklatilir/devam eder
+# [OK] En yuksek skor (oturum bazli) sag ustte gorulur
+# [OK] Seviye bilgisi ortada gorulur
+# [OK] R ile yeniden baslama, ESC ile cikis

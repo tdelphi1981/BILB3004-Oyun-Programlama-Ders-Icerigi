@@ -1,0 +1,8 @@
+[project]
+name = "uzay-kacisi"
+version = "0.3.0"
+description = "PyGame ile asamali uzay savas oyunu projesi"
+requires-python = ">=3.10"
+dependencies = [
+    "pygame-ce>=2.5.7",
+]
