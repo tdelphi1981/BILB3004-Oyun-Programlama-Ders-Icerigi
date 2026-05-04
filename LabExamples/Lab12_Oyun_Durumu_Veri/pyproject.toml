@@ -1,0 +1,5 @@
+[project]
+name = "lab12-oyun-durumu-veri"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["pygame-ce>=2.5.7"]
